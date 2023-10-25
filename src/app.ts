@@ -1,26 +1,42 @@
 import express from "express"
+import corsPackage from "cors"
+import { rateLimit } from "express-rate-limit"
 import { Request, Response } from "express"
 import MerkleTree from "./merkleTree"
 import { ethers } from "ethers"
 import notarizerabi from "./Notarizer.json"
 import basicAuth from "express-basic-auth"
 import * as crypto from "crypto-js"
-
 import * as dotenv from "dotenv"
-
+const mongoConnect = require("./mongo.ts")
+const EventModel = require("./models/event")
 require("dotenv").config()
 
 const app = express()
+
+const cors = corsPackage({
+  origin: "*",
+})
+
+const limiter = rateLimit({
+  windowMs: 5 * 60 * 1000, // 5 min
+  max: 100,
+  standardHeaders: false,
+  legacyHeaders: false,
+})
+
+app.use(cors)
+app.use(limiter)
+app.use(express.json({ limit: "50mb" }))
+app.use(express.urlencoded({ limit: "50mb", extended: true }))
+
+// app.use(
+//   basicAuth({
+//     users: { admin: process.env.AUTH_PASSWORD! },
+//   })
+// )
+
 const port = 3000
-
-app.use(
-  basicAuth({
-    users: { admin: process.env.AUTH_PASSWORD! },
-  })
-)
-app.use(express.json())
-
-let fakeStorage: MerkleTree
 
 const provider = new ethers.JsonRpcProvider(process.env.SEPOLIA_RPC_CALL_URL)
 
@@ -42,13 +58,20 @@ app.post("/notarize", async (req: Request, res: Response) => {
   const merkleRoot = tree.getRoot()
   const merkleTree = tree.getTree()
 
-  fakeStorage = tree // quitar esto para prod
-
   try {
     const transaction = await contract.updateMerkleRoot(eventId, merkleRoot)
-
+    const event = new EventModel({
+      id: eventId,
+      numberOfDocuments: documents.length,
+      merkleRoot: merkleRoot,
+      merkleTree: merkleTree,
+      documents: documents,
+      txnId: transaction.hash,
+    })
+    await event.save()
     res.status(200).json({
       status: "Notarised",
+      numberOfDocuments: documents.length,
       integrityCertificates: {
         merkleRoot: merkleRoot,
         merkleTree: merkleTree,
@@ -62,7 +85,7 @@ app.post("/notarize", async (req: Request, res: Response) => {
 })
 
 const validate = (leaf: string, proof: string[], root: string) => {
-  const proofCopy = new Array(...[proof])
+  const proofCopy = new Array(...proof)
   let currentHash = crypto.SHA256(leaf).toString()
   while (proofCopy.length > 0) {
     currentHash = crypto.SHA256(currentHash + proofCopy[0]).toString()
@@ -79,12 +102,17 @@ app.post("/validate", async (req: Request, res: Response) => {
   try {
     const root = await contract.getMerkleRoot(eventId)
 
-    const merkleTree = fakeStorage // Sacar de la db
-    const index = merkleTree.leaves.indexOf(crypto.SHA256(document).toString())
+    const merkleTreeObject = await EventModel.findOne({ id: eventId })
+    if (!merkleTreeObject) {
+      return res.status(500).json({
+        error: "No merkle tree found",
+      })
+    }
+    const merkleTree = new MerkleTree(merkleTreeObject.documents)
+    const index = merkleTreeObject.documents.indexOf(document)
 
     if (index >= 0) {
       const merkleProof = merkleTree.getProof(index)
-      console.log("proof ", merkleProof)
       const isValid = validate(document, merkleProof, root)
 
       res.status(200).json({
@@ -106,6 +134,10 @@ app.post("/validate", async (req: Request, res: Response) => {
     res.status(500).json({ error: "Error validating " + error })
   }
 })
-app.listen(port, () => {
-  console.log(`Timezones by location application is running on port ${port}.`)
+
+mongoConnect().then(() => {
+  console.log("Connected to database...")
+  app.listen(3000, () => {
+    console.log(`App running on port ${3000}...`)
+  })
 })
