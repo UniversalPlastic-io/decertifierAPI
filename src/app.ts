@@ -103,6 +103,7 @@ app.post("/validate", async (req: Request, res: Response) => {
     const root = await contract.getMerkleRoot(eventId)
 
     const merkleTreeObject = await EventModel.findOne({ id: eventId })
+    console.log(merkleTreeObject);
     if (!merkleTreeObject) {
       return res.status(500).json({
         error: "No merkle tree found",
@@ -121,7 +122,7 @@ app.post("/validate", async (req: Request, res: Response) => {
           merkleRoot: root,
           merkleTree: merkleTree.getTree(),
           merkleProof,
-          txnId: "q123", //Sacar de DB
+          txnId: merkleTreeObject.txnId
         },
       })
     } else {
