@@ -2,11 +2,9 @@ import express from "express"
 import corsPackage from "cors"
 import { rateLimit } from "express-rate-limit"
 import { Request, Response } from "express"
-import MerkleTree from "./merkleTree"
+import { MerkleTree, validateLeaf } from "./merkleTree"
 import { ethers } from "ethers"
 import notarizerabi from "./Notarizer.json"
-import basicAuth from "express-basic-auth"
-import * as crypto from "crypto-js"
 import * as dotenv from "dotenv"
 const mongoConnect = require("./mongo.ts")
 const EventModel = require("./models/event")
@@ -29,12 +27,6 @@ app.use(cors)
 app.use(limiter)
 app.use(express.json({ limit: "50mb" }))
 app.use(express.urlencoded({ limit: "50mb", extended: true }))
-
-// app.use(
-//   basicAuth({
-//     users: { admin: process.env.AUTH_PASSWORD! },
-//   })
-// )
 
 const port = 3000
 
@@ -84,16 +76,6 @@ app.post("/notarize", async (req: Request, res: Response) => {
   }
 })
 
-const validate = (leaf: string, proof: string[], root: string) => {
-  const proofCopy = new Array(...proof)
-  let currentHash = crypto.SHA256(leaf).toString()
-  while (proofCopy.length > 0) {
-    currentHash = crypto.SHA256(currentHash + proofCopy[0]).toString()
-    proofCopy.shift()
-  }
-  return currentHash === root
-}
-
 app.post("/validate", async (req: Request, res: Response) => {
   const body = req.body
   const document = body.document
@@ -101,9 +83,8 @@ app.post("/validate", async (req: Request, res: Response) => {
 
   try {
     const root = await contract.getMerkleRoot(eventId)
-
     const merkleTreeObject = await EventModel.findOne({ id: eventId })
-    console.log(merkleTreeObject);
+
     if (!merkleTreeObject) {
       return res.status(500).json({
         error: "No merkle tree found",
@@ -111,10 +92,9 @@ app.post("/validate", async (req: Request, res: Response) => {
     }
     const merkleTree = new MerkleTree(merkleTreeObject.documents)
     const index = merkleTreeObject.documents.indexOf(document)
-
     if (index >= 0) {
       const merkleProof = merkleTree.getProof(index)
-      const isValid = validate(document, merkleProof, root)
+      const isValid = validateLeaf(document, merkleProof, root)
 
       res.status(200).json({
         isValid: isValid,
@@ -122,7 +102,7 @@ app.post("/validate", async (req: Request, res: Response) => {
           merkleRoot: root,
           merkleTree: merkleTree.getTree(),
           merkleProof,
-          txnId: merkleTreeObject.txnId
+          txnId: merkleTreeObject.txnId, //Sacar de DB
         },
       })
     } else {
