@@ -45,15 +45,21 @@ app.post("/notarize", async (req: Request, res: Response) => {
   const body = req.body
   const documents = body.documents
   const eventId = body.eventId
+  const bussinessId = body.bussinessId
   const tree = new MerkleTree(documents)
 
   const merkleRoot = tree.getRoot()
   const merkleTree = tree.getTree()
 
   try {
-    const transaction = await contract.updateMerkleRoot(eventId, merkleRoot)
+    const transaction = await contract.updateMerkleRoot(
+      eventId,
+      merkleRoot,
+      bussinessId
+    )
     const event = new EventModel({
       id: eventId,
+      bussinessId,
       numberOfDocuments: documents.length,
       merkleRoot: merkleRoot,
       merkleTree: merkleTree,

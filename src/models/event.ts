@@ -6,6 +6,10 @@ const eventSchema = new mongoose2.Schema(
       type: String,
       required: true,
     },
+    bussinessId: {
+      type: String,
+      required: true,
+    },
     numberOfDocuments: {
       type: Number,
       required: true,

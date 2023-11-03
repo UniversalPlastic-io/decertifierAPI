@@ -15,10 +15,6 @@ module.exports = {
       url: process.env.SEPOLIA_RPC_CALL_URL,
       accounts: [process.env.PRIVATE_KEY],
     },
-    xinfin: {
-      url: process.env.XINFIN_NETWORK_URL,
-      accounts: [`0x${process.env.PRIVATE_KEY}`],
-    },
   },
   etherscan: {
     apiKey: process.env.ETHERSCAN_KEY,
